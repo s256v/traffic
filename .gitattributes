@@ -1,0 +1,5 @@
+# The Linux and macOS start script must keep LF line endings.
+/gradlew text eol=lf
+# Windows scripts use CRLF.
+*.bat text eol=crlf
+*.jar binary

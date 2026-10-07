@@ -1,0 +1,74 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+          - os: ubuntu-24.04-arm
+            name: linux-arm64
+          - os: macos-latest
+            name: macos-arm64
+          - os: windows-latest
+            name: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm-community'
+          cache: 'gradle'
+      - name: Test and build the executable
+        shell: bash
+        run: |
+          # A version tag like v0.2.0 sets the version to 0.2.0. Other builds are "dev".
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            ./gradlew test nativeCompile -PappVersion="${GITHUB_REF_NAME#v}"
+          else
+            ./gradlew test nativeCompile
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: traffic-${{ matrix.name }}
+          path: |
+            build/native/nativeCompile/traffic
+            build/native/nativeCompile/traffic.exe
+          if-no-files-found: error
+
+  # On a version tag like v0.1.0, publishes the executables as a GitHub release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: traffic-*
+          path: artifacts
+      - name: Rename the executables, like traffic-linux-x64
+        run: |
+          mkdir release
+          for dir in artifacts/*; do
+            name=$(basename "$dir")
+            if [ -f "$dir/traffic.exe" ]; then
+              mv "$dir/traffic.exe" "release/$name.exe"
+            else
+              mv "$dir/traffic" "release/$name"
+            fi
+          done
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --generate-notes
