@@ -52,6 +52,21 @@ final class LossTracker {
         return lost;
     }
 
+    /**
+     * Counts the packets still missing in the window as lost, and starts over with the next packet even if it
+     * continues the same stream. Used after an outage, so the packets missed during it don't count as lost.
+     */
+    long flush() {
+        long lost = 0;
+        if (started) {
+            for (int slot = 0; slot < WINDOW; slot++) {
+                lost += evict(slot);
+            }
+            started = false;
+        }
+        return lost;
+    }
+
     private void restart(long streamId, long seq) {
         Arrays.fill(slotSeq, -1);
         Arrays.fill(slotReceived, false);

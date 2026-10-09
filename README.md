@@ -11,6 +11,8 @@ jitter and round-trip time, in each direction.
 - Each side measures what it receives. The server's loss and jitter describe the upload, the
   client's describe the download. Both sides measure the round-trip time.
 - The server drops a client's metrics after `--client-timeout` seconds without packets from it.
+- If nothing arrives from the server for 10 s, the client moves to a new UDP port, and again every
+  minute while nothing arrives. Some networks block one UDP flow and let a new one through.
 
 ## Run
 
@@ -52,6 +54,8 @@ Rates are in bits per second: `500k`, `2m`, `2.5m` (k = 1,000, m = 1,000,000, g 
 | `trf_rx_bytes_total`, `trf_tx_bytes_total`                   | counter   | bytes received, sent                                         |
 | `trf_rx_packets_total`, `trf_tx_packets_total`               | counter   | packets received, sent                                       |
 | `trf_lost_packets_total`                                     | counter   | packets the other side sent that never arrived               |
+| `trf_outage_seconds_total`                                   | counter   | time when nothing at all arrived for over 1 s                |
+| `trf_port_changes_total`                                     | counter   | client only: times it moved to a new UDP port                |
 | `trf_rx_rate_bits_per_second`, `trf_tx_rate_bits_per_second` | gauge     | receive and send rate over the last second                   |
 | `trf_jitter_seconds`                                         | histogram | how much the packet delay varies from one packet to the next |
 | `trf_rtt_seconds`                                            | histogram | round-trip time                                              |
@@ -62,6 +66,9 @@ Server metrics have the labels `client_id` and `server_id`, client metrics have 
   included.
 - A missing packet counts as lost once the stream has moved 256 packets past it, so packets that
   only arrive out of order are not counted.
+- An outage is a gap of over 1 s with no packets at all (over 3 packet intervals at very low
+  rates). The whole gap counts, an outage still going on counts as it goes, and packets missed
+  during an outage don't count as lost.
 
 Prometheus scrape config:
 
@@ -83,8 +90,9 @@ histogram_quantile(0.95, rate(trf_rtt_seconds_bucket[5m]))
 ```
 
 A Grafana dashboard is in `grafana/dashboard.json`: in Grafana, open Dashboards > New > Import and
-upload it. It shows one row per client. Download loss and jitter are measured by the client, so
-Prometheus must scrape the client too.
+upload it. It shows one row per client, with a bar per direction that turns red during an outage
+and marks for the client's port changes. Download loss, jitter and outages are measured by the
+client, so Prometheus must scrape the client too.
 
 ## Build
 

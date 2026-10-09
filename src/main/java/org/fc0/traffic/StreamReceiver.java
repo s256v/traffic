@@ -1,8 +1,9 @@
 package org.fc0.traffic;
 
 /**
- * Measures the stream of packets coming from one peer: loss, jitter and round-trip time. {@link #onPacket} is called
- * from the receiving thread only; {@link #latestEcho} may be read from the sending thread.
+ * Measures the stream of packets coming from one peer: loss, jitter, round-trip time and outages. {@link #onPacket} is
+ * called from the receiving thread only; {@link #latestEcho} may be read from the sending thread, and
+ * {@link #updateOutage} is called from the housekeeping thread.
  */
 final class StreamReceiver {
     /** The latest packet from the peer, echoed back so the peer can measure the round-trip time. */
@@ -15,6 +16,7 @@ final class StreamReceiver {
     /** When this side started sending; echoes of older send times belong to an earlier run and are ignored. */
     private final long sendingSince;
     private final LossTracker loss = new LossTracker();
+    private final OutageMeter outages;
     private volatile Echo latestEcho;
 
     private boolean haveTransit;
@@ -26,9 +28,15 @@ final class StreamReceiver {
     StreamReceiver(Metrics.Peer metrics, long sendingSince) {
         this.metrics = metrics;
         this.sendingSince = sendingSince;
+        this.outages = new OutageMeter(sendingSince, metrics::outage);
     }
 
     void onPacket(Packet p, long receivedAt) {
+        // The peer sends a packet every packetSize * 8 / rate seconds.
+        if (outages.onPacket(receivedAt, p.packetSize * 8_000_000_000L / p.rate)) {
+            // The packets missed during an outage count as outage time, not as loss.
+            metrics.lost(loss.flush());
+        }
         metrics.received(p.length);
         metrics.lost(loss.onPacket(p.streamId, p.seq));
 
@@ -59,5 +67,10 @@ final class StreamReceiver {
 
     Echo latestEcho() {
         return latestEcho;
+    }
+
+    /** Counts an outage that is still going on. Call about once a second. */
+    void updateOutage(long now) {
+        outages.update(now);
     }
 }

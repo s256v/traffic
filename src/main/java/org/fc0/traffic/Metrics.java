@@ -22,23 +22,29 @@ final class Metrics {
     static final double[] JITTER_BUCKETS = {0.001, 0.002, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.5};
 
     private final PrometheusRegistry registry = new PrometheusRegistry();
+    private final String[] labelNames;
     private final Counter rxBytes;
     private final Counter txBytes;
     private final Counter rxPackets;
     private final Counter txPackets;
     private final Counter lostPackets;
+    private final Counter outageSeconds;
     private final Gauge rxRate;
     private final Gauge txRate;
     private final Histogram jitter;
     private final Histogram rtt;
 
     Metrics(String... labelNames) {
+        this.labelNames = labelNames;
         rxBytes = counter("trf_rx_bytes_total", "UDP payload bytes received", labelNames);
         txBytes = counter("trf_tx_bytes_total", "UDP payload bytes sent", labelNames);
         rxPackets = counter("trf_rx_packets_total", "Packets received", labelNames);
         txPackets = counter("trf_tx_packets_total", "Packets sent", labelNames);
         lostPackets = counter("trf_lost_packets_total",
-                "Packets the other side sent that never arrived (counted on the receiving side)", labelNames);
+                "Packets the other side sent that never arrived, not counting outages (counted on the receiving side)",
+                labelNames);
+        outageSeconds = counter("trf_outage_seconds_total",
+                "Time when nothing at all arrived from the other side for over 1 s", labelNames);
         rxRate = gauge("trf_rx_rate_bits_per_second", "Receive rate over the last second", labelNames);
         txRate = gauge("trf_tx_rate_bits_per_second", "Send rate over the last second", labelNames);
         jitter = histogram("trf_jitter_seconds",
@@ -67,6 +73,13 @@ final class Metrics {
         return new Peer(labelValues);
     }
 
+    /** Creates the client's own counter of moves to a new port and returns it for one client. */
+    CounterDataPoint portChanges(String... labelValues) {
+        return counter("trf_port_changes_total",
+                "Times the client moved to a new UDP port because nothing arrived from the server", labelNames)
+                .labelValues(labelValues);
+    }
+
     /** Removes all metrics for one set of label values. */
     void remove(String... labelValues) {
         rxBytes.remove(labelValues);
@@ -74,6 +87,7 @@ final class Metrics {
         rxPackets.remove(labelValues);
         txPackets.remove(labelValues);
         lostPackets.remove(labelValues);
+        outageSeconds.remove(labelValues);
         rxRate.remove(labelValues);
         txRate.remove(labelValues);
         jitter.remove(labelValues);
@@ -100,6 +114,7 @@ final class Metrics {
         private final CounterDataPoint rxPacketsPoint;
         private final CounterDataPoint txPacketsPoint;
         private final CounterDataPoint lostPacketsPoint;
+        private final CounterDataPoint outageSecondsPoint;
         private final GaugeDataPoint rxRatePoint;
         private final GaugeDataPoint txRatePoint;
         private final DistributionDataPoint jitterPoint;
@@ -117,6 +132,7 @@ final class Metrics {
             rxPacketsPoint = rxPackets.labelValues(labelValues);
             txPacketsPoint = txPackets.labelValues(labelValues);
             lostPacketsPoint = lostPackets.labelValues(labelValues);
+            outageSecondsPoint = outageSeconds.labelValues(labelValues);
             rxRatePoint = rxRate.labelValues(labelValues);
             txRatePoint = txRate.labelValues(labelValues);
             jitterPoint = jitter.labelValues(labelValues);
@@ -141,6 +157,10 @@ final class Metrics {
             if (packets > 0) {
                 lostPacketsPoint.inc(packets);
             }
+        }
+
+        void outage(double seconds) {
+            outageSecondsPoint.inc(seconds);
         }
 
         void jitter(double seconds) {

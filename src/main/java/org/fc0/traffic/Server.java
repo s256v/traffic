@@ -111,6 +111,7 @@ final class Server implements AutoCloseable {
                 sessions.computeIfPresent(clientId, (id, session) -> {
                     if (now - session.lastReceived <= timeout) {
                         session.peer.updateRates(now);
+                        session.stream.updateOutage(now);
                         return session;
                     }
                     session.stop();

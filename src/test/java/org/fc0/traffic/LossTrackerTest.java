@@ -65,6 +65,18 @@ class LossTrackerTest {
     }
 
     @Test
+    void flushCountsTheWindowAndStartsOver() {
+        LossTracker t = new LossTracker();
+        long lost = feed(t, 1, 0, 400);
+        // 400..402 missing and still in the window when an outage starts after 499: they count as lost, the packets
+        // missed during the outage don't.
+        lost += feed(t, 1, 403, 500);
+        assertEquals(0, lost);
+        assertEquals(3, t.flush());
+        assertEquals(0, feed(t, 1, 2_000, 3_000));
+    }
+
+    @Test
     void absurdJumpStartsOver() {
         LossTracker t = new LossTracker();
         feed(t, 1, 0, 10);

@@ -7,10 +7,14 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,6 +45,7 @@ class EndToEndTest {
                     assertEquals(m.get("trf_rx_packets_total" + labels), m.get("trf_rx_bytes_total" + labels) / 500, 3);
                     assertEquals(m.get("trf_tx_packets_total" + labels), m.get("trf_tx_bytes_total" + labels) / 500, 3);
                     assertEquals(0, m.get("trf_lost_packets_total" + labels));
+                    assertEquals(0, m.get("trf_outage_seconds_total" + labels));
                     assertTrue(near(m.get("trf_tx_rate_bits_per_second" + labels), 1e6), labels);
                     assertTrue(m.get("trf_jitter_seconds_count" + labels) > 0, labels);
                     // Loopback: the average round trip is far below 100 ms.
@@ -50,6 +55,8 @@ class EndToEndTest {
                     assertTrue(m.containsKey("trf_jitter_seconds_bucket" + labels.replace("}", ",le=\"0.002\"}")),
                             "jitter buckets from TASK.md");
                 }
+                assertEquals(0, c.get("trf_port_changes_total" + C1));
+                assertFalse(s.containsKey("trf_port_changes_total" + S1), "only the client moves to new ports");
             }
         }
     }
@@ -93,6 +100,51 @@ class EndToEndTest {
         }
     }
 
+    @Test
+    void bothSidesCountAnOutage() throws Exception {
+        try (Server server = server("10m", 60);
+                Relay relay = new Relay(server.port());
+                Client client = client("c1", relay.port(), "500k", 500)) {
+            await(client.metricsPort(), m -> m.getOrDefault("trf_rx_packets_total" + C1, 0.0) > 100);
+            relay.blockClient();
+            Thread.sleep(3000);
+            relay.unblock();
+            Map<String, Double> c = await(client.metricsPort(), m -> m.get("trf_outage_seconds_total" + C1) > 0
+                    && near(m.get("trf_rx_rate_bits_per_second" + C1), 500e3));
+            Map<String, Double> s = await(server.metricsPort(), m -> m.get("trf_outage_seconds_total" + S1) > 0
+                    && near(m.get("trf_rx_rate_bits_per_second" + S1), 500e3));
+            assertEquals(3, c.get("trf_outage_seconds_total" + C1), 0.5);
+            assertEquals(3, s.get("trf_outage_seconds_total" + S1), 0.5);
+            assertEquals(0, c.get("trf_port_changes_total" + C1));
+            // The packets missed during the outage don't count as lost.
+            assertEquals(0, c.get("trf_lost_packets_total" + C1));
+            assertEquals(0, s.get("trf_lost_packets_total" + S1));
+        }
+    }
+
+    @Test
+    void clientMovesToANewPortWhenItsFlowIsBlocked() throws Exception {
+        try (Server server = server("10m", 60);
+                Relay relay = new Relay(server.port());
+                Client client = client("c1", relay.port(), "500k", 500)) {
+            await(client.metricsPort(), m -> m.getOrDefault("trf_rx_packets_total" + C1, 0.0) > 100);
+            // Blocks the client's port for good, both ways.
+            relay.blockClient();
+            // The outage shows while it lasts.
+            await(client.metricsPort(), m -> m.get("trf_outage_seconds_total" + C1) >= 2);
+            // After 10 s without packets, the client moves to a new port, which gets through.
+            Map<String, Double> c = await(client.metricsPort(), m -> m.get("trf_port_changes_total" + C1) == 1
+                    && near(m.get("trf_rx_rate_bits_per_second" + C1), 500e3));
+            Map<String, Double> s = await(server.metricsPort(),
+                    m -> near(m.get("trf_rx_rate_bits_per_second" + S1), 500e3));
+            assertEquals(10.5, c.get("trf_outage_seconds_total" + C1), 1.5);
+            assertEquals(10.5, s.get("trf_outage_seconds_total" + S1), 1.5);
+            // The packets that went to and from the old port count as outage, not as loss.
+            assertEquals(0, c.get("trf_lost_packets_total" + C1));
+            assertEquals(0, s.get("trf_lost_packets_total" + S1));
+        }
+    }
+
     private static Server server(String maxRate, int clientTimeoutSeconds) throws IOException {
         Server server = new Server(new Server.Config("srv", LOOPBACK, 0, LOOPBACK, 0, Rates.parse(maxRate),
                 Duration.ofSeconds(clientTimeoutSeconds)));
@@ -101,7 +153,11 @@ class EndToEndTest {
     }
 
     private static Client client(String id, Server server, String rate, int packetSize) throws IOException {
-        Client client = new Client(new Client.Config(id, LOOPBACK.getHostAddress(), server.port(), null, 0,
+        return client(id, server.port(), rate, packetSize);
+    }
+
+    private static Client client(String id, int port, String rate, int packetSize) throws IOException {
+        Client client = new Client(new Client.Config(id, LOOPBACK.getHostAddress(), port, null, 0,
                 Rates.parse(rate), packetSize));
         client.start();
         return client;
@@ -140,5 +196,69 @@ class EndToEndTest {
             }
         }
         return values;
+    }
+
+    /** Relays UDP between a client and the server, and can block the client's flow like a filter on the path. */
+    private static final class Relay implements AutoCloseable {
+        private final DatagramChannel clientSide = DatagramChannel.open().bind(new InetSocketAddress(LOOPBACK, 0));
+        private final DatagramChannel serverSide = DatagramChannel.open().bind(new InetSocketAddress(LOOPBACK, 0));
+        private final InetSocketAddress server;
+        private volatile SocketAddress client;
+        private volatile SocketAddress blocked;
+
+        Relay(int serverPort) throws IOException {
+            server = new InetSocketAddress(LOOPBACK, serverPort);
+            Thread.ofPlatform().daemon().start(this::toServer);
+            Thread.ofPlatform().daemon().start(this::toClient);
+        }
+
+        int port() throws IOException {
+            return ((InetSocketAddress) clientSide.getLocalAddress()).getPort();
+        }
+
+        /** Drops all packets from and to the client's current address and port. */
+        void blockClient() {
+            blocked = client;
+        }
+
+        void unblock() {
+            blocked = null;
+        }
+
+        private void toServer() {
+            ByteBuffer buf = ByteBuffer.allocate(65_536);
+            try {
+                while (true) {
+                    SocketAddress from = clientSide.receive(buf.clear());
+                    if (!from.equals(blocked)) {
+                        client = from;
+                        serverSide.send(buf.flip(), server);
+                    }
+                }
+            } catch (IOException e) {
+                // closed
+            }
+        }
+
+        private void toClient() {
+            ByteBuffer buf = ByteBuffer.allocate(65_536);
+            try {
+                while (true) {
+                    serverSide.receive(buf.clear());
+                    SocketAddress to = client;
+                    if (to != null && !to.equals(blocked)) {
+                        clientSide.send(buf.flip(), to);
+                    }
+                }
+            } catch (IOException e) {
+                // closed
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            clientSide.close();
+            serverSide.close();
+        }
     }
 }

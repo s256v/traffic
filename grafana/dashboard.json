@@ -1,7 +1,7 @@
 {
   "uid": "traffic-quality",
   "title": "Connection quality (traffic)",
-  "description": "Packet loss, jitter, round-trip time and rates measured by traffic, one row per client.",
+  "description": "Packet loss, outages, jitter, round-trip time and rates measured by traffic, one row per client.",
   "tags": [
     "traffic",
     "network"
@@ -93,7 +93,7 @@
       "type": "stat",
       "id": 2,
       "title": "Upload loss",
-      "description": "Share of the packets from the client that never reached the server, over the selected time range. Measured by the server. Yellow above 1%, red above 5%.",
+      "description": "Share of the packets from the client that never reached the server, over the selected time range, not counting outages. Measured by the server. Yellow above 1%, red above 5%.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -165,7 +165,7 @@
       "type": "stat",
       "id": 3,
       "title": "Download loss",
-      "description": "Share of the packets from the server that never reached the client, over the selected time range. Measured by the client, so Prometheus must scrape the client. Yellow above 1%, red above 5%.",
+      "description": "Share of the packets from the server that never reached the client, over the selected time range, not counting outages. Measured by the client, so Prometheus must scrape the client. Yellow above 1%, red above 5%.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -518,10 +518,345 @@
       }
     },
     {
+      "type": "state-timeline",
+      "id": 13,
+      "title": "Outages",
+      "description": "Red while nothing at all arrives for over 1 s: upload is measured by the server, download by the client. Yellow marks show when the client moved to a new port because nothing came from the server. Each point covers the last few scrapes, so a short outage shows wider than it was.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(trf_outage_seconds_total{server_id!=\"\", client_id=~\"$client\"}[$__rate_interval])) > bool 0",
+          "legendFormat": "upload",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(trf_outage_seconds_total{server_id=\"\", client_id=~\"$client\"}[$__rate_interval])) > bool 0",
+          "legendFormat": "download",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(trf_port_changes_total{server_id=\"\", client_id=~\"$client\"}[$__rate_interval])) > bool 0",
+          "legendFormat": "port change",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "packets arrive",
+                  "color": "#0ca30c",
+                  "index": 0
+                },
+                "1": {
+                  "text": "outage",
+                  "color": "#d03b3b",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "same port",
+                        "color": "rgba(128, 128, 128, 0.3)",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "moved to a new port",
+                        "color": "#fab219",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "left",
+        "rowHeight": 0.8,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "id": 14,
+      "title": "Upload outages",
+      "description": "Total time over the selected time range when nothing at all reached the server from the client for over 1 s. Measured by the server, which drops a silent client after client-timeout. Yellow for any outage, red above 10 s.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(trf_outage_seconds_total{server_id!=\"\", client_id=~\"$client\"}[$__range]))",
+          "legendFormat": "Upload outages",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 0.5
+              },
+              {
+                "color": "#d03b3b",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 15,
+      "title": "Download outages",
+      "description": "Total time over the selected time range when nothing at all reached the client from the server for over 1 s. Measured by the client. Yellow for any outage, red above 10 s.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(trf_outage_seconds_total{server_id=\"\", client_id=~\"$client\"}[$__range]))",
+          "legendFormat": "Download outages",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 0.5
+              },
+              {
+                "color": "#d03b3b",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 16,
+      "title": "Port changes",
+      "description": "How many times the client moved to a new UDP port over the selected time range, because nothing came from the server for 10 s. Some networks block one UDP flow and let a new one through. Yellow for any port change.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(trf_port_changes_total{server_id=\"\", client_id=~\"$client\"}[$__range]))",
+          "legendFormat": "Port changes",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 0.5
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
       "type": "timeseries",
       "id": 8,
       "title": "Packet loss",
-      "description": "Share of packets that never arrived. Upload is measured by the server, download by the client. A packet counts as lost once the stream is 256 packets past it.",
+      "description": "Share of packets that never arrived, not counting outages. Upload is measured by the server, download by the client. A packet counts as lost once the stream is 256 packets past it.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -530,7 +865,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 10
       },
       "targets": [
         {
@@ -636,7 +971,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 10
       },
       "targets": [
         {
@@ -741,7 +1076,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 18
       },
       "targets": [
         {
@@ -926,7 +1261,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 18
       },
       "targets": [
         {
@@ -1045,7 +1380,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 26
       },
       "targets": [
         {
