@@ -11,16 +11,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The Linux builds run in Oracle Linux 8, which has an old glibc (2.28),
+          # so the executables also run on older Linux, like Ubuntu 20.04.
           - os: ubuntu-latest
             name: linux-x64
+            container: oraclelinux:8
           - os: ubuntu-24.04-arm
             name: linux-arm64
+            container: oraclelinux:8
           - os: macos-latest
             name: macos-arm64
           - os: windows-latest
             name: windows-x64
     runs-on: ${{ matrix.os }}
+    # Empty for macOS and Windows, so they build directly on the runner.
+    container: ${{ matrix.container }}
     steps:
+      - name: Install the build tools
+        if: matrix.container
+        # gcc and the libraries that native-image links with, and git for actions/checkout.
+        run: dnf install -y gcc glibc-devel zlib-devel git-core
       - uses: actions/checkout@v7
       - uses: graalvm/setup-graalvm@v1
         with:

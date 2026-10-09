@@ -14,7 +14,7 @@ import picocli.CommandLine.ParseResult;
 
 class MainTest {
     private static final String[] CLIENT = {
-        "--mode=client", "--client-id=laptop", "--host=localhost", "--port=5000", "--metrics-port=9102", "--rate-limit=2m"
+        "--mode=client", "--client-id=laptop", "--host=localhost", "--rate-limit=2m"
     };
 
     @Test
@@ -28,22 +28,27 @@ class MainTest {
 
     @Test
     void clientNeedsItsOptions() {
-        assertInvalid("client mode needs --client-id, --host, --rate-limit",
-                "--mode=client", "--port=5000", "--metrics-port=9102");
+        assertInvalid("client mode needs --client-id, --host, --rate-limit", "--mode=client");
     }
 
     @Test
     void serverNeedsAnId() {
-        assertInvalid("server mode needs --server-id", "--mode=server", "--port=5000", "--metrics-port=9101");
+        assertInvalid("server mode needs --server-id", "--mode=server");
+    }
+
+    @Test
+    void portsHaveDefaults() {
+        ParseResult r = Main.commandLine().parseArgs("--mode=server", "--server-id=home");
+        assertEquals(6123, (int) r.commandSpec().findOption("--port").getValue());
+        assertEquals(8123, (int) r.commandSpec().findOption("--metrics-port").getValue());
     }
 
     @Test
     void rejectsOptionsOfTheOtherMode() {
         assertInvalid("--max-rate is a server option", with(CLIENT, "--max-rate=1m"));
-        assertInvalid("--rate-limit is a client option",
-                "--mode=server", "--server-id=s", "--port=5000", "--metrics-port=9101", "--rate-limit=1m");
-        assertInvalid("--client-id is a client option",
-                "-m", "server", "-s", "s", "-p", "5000", "-M", "9101", "-c", "c");
+        assertInvalid("--address is a server option", with(CLIENT, "--address=127.0.0.1"));
+        assertInvalid("--rate-limit is a client option", "--mode=server", "--server-id=s", "--rate-limit=1m");
+        assertInvalid("--client-id is a client option", "-m", "server", "-s", "s", "-c", "c");
     }
 
     @Test
@@ -52,19 +57,25 @@ class MainTest {
         assertInvalid("--packet-size must be between 128 and 65507", with(CLIENT, "--packet-size=100"));
         assertInvalid("--port must be between 1 and 65535", with(CLIENT, "--port=70000"));
         assertInvalid("--client-id must be 1 to 64 bytes long", with(CLIENT, "--client-id=" + "x".repeat(65)));
-        assertInvalid("expected one of [client, server]", "--mode=proxy", "--port=5000", "--metrics-port=9101");
+        assertInvalid("--metrics-address: invalid IP address 'localhost'", with(CLIENT, "--metrics-address=localhost"));
+        assertInvalid("--address: invalid IP address 'example.com'",
+                "--mode=server", "--server-id=s", "--address=example.com");
+        assertInvalid("expected one of [client, server]", "--mode=proxy");
     }
 
     @Test
     void acceptsShortOptions() {
         ParseResult r = Main.commandLine().parseArgs("-m", "client", "-c", "laptop", "-s", "home", "-M", "9102",
-                "-H", "example.com", "-p", "5000", "-r", "2m", "-l", "500", "-R", "5m", "-t", "30");
+                "-A", "127.0.0.1", "-H", "example.com", "-p", "5000", "-a", "::1", "-r", "2m", "-l", "500",
+                "-R", "5m", "-t", "30");
         assertEquals(Main.Mode.client, r.matchedOptionValue("--mode", null));
         assertEquals("laptop", r.matchedOptionValue("--client-id", null));
         assertEquals("home", r.matchedOptionValue("--server-id", null));
         assertEquals(9102, (int) r.matchedOptionValue("--metrics-port", 0));
+        assertEquals("127.0.0.1", r.matchedOptionValue("--metrics-address", null));
         assertEquals("example.com", r.matchedOptionValue("--host", null));
         assertEquals(5000, (int) r.matchedOptionValue("--port", 0));
+        assertEquals("::1", r.matchedOptionValue("--address", null));
         assertEquals("2m", r.matchedOptionValue("--rate-limit", null));
         assertEquals(500, (int) r.matchedOptionValue("--packet-size", 0));
         assertEquals("5m", r.matchedOptionValue("--max-rate", null));

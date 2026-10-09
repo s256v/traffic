@@ -7,6 +7,8 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.DatagramChannel;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -14,7 +16,9 @@ import java.util.concurrent.locks.LockSupport;
  * back.
  */
 final class Client implements AutoCloseable {
-    record Config(String clientId, String host, int port, int metricsPort, long rate, int packetSize) {
+    /** A null {@code metricsAddress} means all local addresses. */
+    record Config(String clientId, String host, int port, InetAddress metricsAddress, int metricsPort, long rate,
+            int packetSize) {
     }
 
     /** How long the server may stay silent before the client says so on the terminal. */
@@ -44,14 +48,24 @@ final class Client implements AutoCloseable {
     void start() throws IOException {
         try {
             server = new InetSocketAddress(InetAddress.getByName(config.host()), config.port());
-            channel = Udp.open(0);
-            http = metrics.serve(config.metricsPort());
+            channel = Udp.open(null, 0);
+            http = metrics.serve(config.metricsAddress(), config.metricsPort());
         } catch (IOException e) {
             close();
             throw e;
         }
-        Log.info("client %s sending to %s at %s with %d-byte packets, metrics on http://localhost:%d/metrics",
-                config.clientId(), server, Rates.format(config.rate()), config.packetSize(), metricsPort());
+        String ip = server.getAddress().getHostAddress();
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("mode", "client");
+        parameters.put("client-id", config.clientId());
+        // The host as given, and the IP address it resolved to if it's a name, like "example.com (192.0.2.1)".
+        parameters.put("host", server.getHostString().equals(ip) ? ip : server.getHostString() + " (" + ip + ")");
+        parameters.put("port", config.port());
+        parameters.put("metrics-address", Addresses.format(config.metricsAddress()));
+        parameters.put("metrics-port", metricsPort());
+        parameters.put("rate-limit", Rates.format(config.rate()));
+        parameters.put("packet-size", config.packetSize() + " bytes");
+        Log.parameters("traffic started", parameters);
         running = true;
         receiver = Thread.ofPlatform().name("receiver").start(this::receiveLoop);
         sender = Thread.ofPlatform().name("sender").daemon().start(this::sendLoop);

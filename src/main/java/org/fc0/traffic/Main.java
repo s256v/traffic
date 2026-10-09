@@ -2,6 +2,7 @@ package org.fc0.traffic;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -26,9 +27,8 @@ import picocli.CommandLine.UnmatchedArgumentException;
                 + "serves Prometheus metrics on both sides, to debug a connection that makes video calls freeze.%n",
         footerHeading = "%nExamples:%n",
         footer = {
-            "  traffic --mode=server --server-id=home --port=5000 --metrics-port=9101",
-            "  traffic --mode=client --client-id=laptop --host=example.com --port=5000 --metrics-port=9102 "
-                    + "--rate-limit=2m"
+            "  traffic --mode=server --server-id=home",
+            "  traffic --mode=client --client-id=laptop --host=example.com --rate-limit=2m"
         })
 public final class Main implements Callable<Integer> {
     static final String VERSION = Version.VALUE;
@@ -49,16 +49,24 @@ public final class Main implements Callable<Integer> {
             description = "Server: name of this server (server_id label).")
     private String serverId;
 
-    @Option(names = {"-M", "--metrics-port"}, required = true, paramLabel = "<port>",
-            description = "Port of the Prometheus endpoint, served at /metrics.")
+    @Option(names = {"-M", "--metrics-port"}, paramLabel = "<port>", defaultValue = "8123",
+            description = "Port of the Prometheus endpoint, served at /metrics (default: ${DEFAULT-VALUE}).")
     private int metricsPort;
+
+    @Option(names = {"-A", "--metrics-address"}, paramLabel = "<ip>",
+            description = "IP address the Prometheus endpoint listens on (default: all addresses).")
+    private String metricsAddress;
 
     @Option(names = {"-H", "--host"}, paramLabel = "<host>", description = "Client: server host name or IP address.")
     private String host;
 
-    @Option(names = {"-p", "--port"}, required = true, paramLabel = "<port>",
-            description = "Client: server UDP port. Server: UDP port to listen on.")
+    @Option(names = {"-p", "--port"}, paramLabel = "<port>", defaultValue = "6123",
+            description = "Client: server UDP port. Server: UDP port to listen on (default: ${DEFAULT-VALUE}).")
     private int port;
+
+    @Option(names = {"-a", "--address"}, paramLabel = "<ip>",
+            description = "Server: IP address to listen on for UDP (default: all addresses).")
+    private String address;
 
     @Option(names = {"-r", "--rate-limit"}, paramLabel = "<rate>",
             description = "Client: rate in bits per second, both ways, e.g. 500k, 1m or 2.5m (k = 1,000, m = 1,000,000).")
@@ -123,7 +131,7 @@ public final class Main implements Callable<Integer> {
     }
 
     private AutoCloseable startClient() throws IOException {
-        rejectOptions("server", "--server-id", "--max-rate", "--client-timeout");
+        rejectOptions("server", "--server-id", "--address", "--max-rate", "--client-timeout");
         requireOptions("client", "--client-id", "--host", "--rate-limit");
         checkId("--client-id", clientId);
         checkPort("--port", port);
@@ -131,8 +139,9 @@ public final class Main implements Callable<Integer> {
         if (packetSize < Packet.MIN_SIZE || packetSize > Packet.MAX_SIZE) {
             throw invalid("--packet-size must be between " + Packet.MIN_SIZE + " and " + Packet.MAX_SIZE);
         }
-        Client client = new Client(
-                new Client.Config(clientId, host, port, metricsPort, parseRate("--rate-limit", rateLimit), packetSize));
+        Client client = new Client(new Client.Config(clientId, host, port,
+                parseAddress("--metrics-address", metricsAddress), metricsPort, parseRate("--rate-limit", rateLimit),
+                packetSize));
         client.start();
         return client;
     }
@@ -146,7 +155,8 @@ public final class Main implements Callable<Integer> {
         if (clientTimeout < 1) {
             throw invalid("--client-timeout must be at least 1 second");
         }
-        Server server = new Server(new Server.Config(serverId, port, metricsPort, parseRate("--max-rate", maxRate),
+        Server server = new Server(new Server.Config(serverId, parseAddress("--address", address), port,
+                parseAddress("--metrics-address", metricsAddress), metricsPort, parseRate("--max-rate", maxRate),
                 Duration.ofSeconds(clientTimeout)));
         server.start();
         return server;
@@ -194,6 +204,14 @@ public final class Main implements Callable<Integer> {
     private long parseRate(String name, String value) {
         try {
             return Rates.parse(value);
+        } catch (IllegalArgumentException e) {
+            throw invalid(name + ": " + e.getMessage());
+        }
+    }
+
+    private InetAddress parseAddress(String name, String value) {
+        try {
+            return Addresses.parse(value);
         } catch (IllegalArgumentException e) {
             throw invalid(name + ": " + e.getMessage());
         }

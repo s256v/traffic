@@ -14,25 +14,34 @@ jitter and round-trip time, in each direction.
 
 ## Run
 
+Download the executable for your OS from the Releases page. On Linux and macOS, make it executable
+with `chmod +x <file>`. On macOS, also run `xattr -d com.apple.quarantine <file>`: the file isn't
+signed, so macOS refuses to open it otherwise.
+
 ```
-traffic --mode=server --server-id=home --port=5000 --metrics-port=9101
-traffic --mode=client --client-id=laptop --host=example.com --port=5000 --metrics-port=9102 --rate-limit=2m
+traffic --mode=server --server-id=home
+traffic --mode=client --client-id=laptop --host=example.com --rate-limit=2m
 ```
 
-Stop with Ctrl+C. The server's firewall must let in UDP on `--port`.
+Stop with Ctrl+C. The server's firewall must let in UDP on `--port` (6123 by default). To run the
+client and the server on one machine, give one of them another `--metrics-port`, like `-M 8124`.
+The metrics endpoint has no password, so on a public server give it a private or VPN address with
+`--metrics-address`.
 
-| Option             | Short | Mode   | Default | Meaning                                            |
-|--------------------|-------|--------|---------|----------------------------------------------------|
-| `--mode`           | `-m`  | both   |         | `client` or `server`                               |
-| `--metrics-port`   | `-M`  | both   |         | port of the Prometheus endpoint, at `/metrics`     |
-| `--port`           | `-p`  | both   |         | client: server's UDP port; server: UDP port to use |
-| `--client-id`      | `-c`  | client |         | name of this client, the `client_id` label         |
-| `--host`           | `-H`  | client |         | server host name or IP address                     |
-| `--rate-limit`     | `-r`  | client |         | bits per second, both ways                         |
-| `--packet-size`    | `-l`  | client | 1200    | UDP payload size in bytes, both ways               |
-| `--server-id`      | `-s`  | server |         | name of this server, the `server_id` label         |
-| `--max-rate`       | `-R`  | server | 10m     | the most the server sends to any one client        |
-| `--client-timeout` | `-t`  | server | 60      | seconds without packets before a client is dropped |
+| Option              | Short | Mode   | Default | Meaning                                            |
+|---------------------|-------|--------|---------|----------------------------------------------------|
+| `--mode`            | `-m`  | both   |         | `client` or `server`                               |
+| `--metrics-port`    | `-M`  | both   | 8123    | port of the Prometheus endpoint, at `/metrics`     |
+| `--metrics-address` | `-A`  | both   | all     | IP address of the Prometheus endpoint              |
+| `--port`            | `-p`  | both   | 6123    | client: server's UDP port; server: UDP port to use |
+| `--client-id`       | `-c`  | client |         | name of this client, the `client_id` label         |
+| `--host`            | `-H`  | client |         | server host name or IP address                     |
+| `--rate-limit`      | `-r`  | client |         | bits per second, both ways                         |
+| `--packet-size`     | `-l`  | client | 1200    | UDP payload size in bytes, both ways               |
+| `--server-id`       | `-s`  | server |         | name of this server, the `server_id` label         |
+| `--address`         | `-a`  | server | all     | IP address to listen on for UDP                    |
+| `--max-rate`        | `-R`  | server | 10m     | the most the server sends to any one client        |
+| `--client-timeout`  | `-t`  | server | 60      | seconds without packets before a client is dropped |
 
 Rates are in bits per second: `500k`, `2m`, `2.5m` (k = 1,000, m = 1,000,000, g = 1,000,000,000).
 
@@ -60,7 +69,7 @@ Prometheus scrape config:
 scrape_configs:
   - job_name: traffic
     static_configs:
-      - targets: ["home-server:9101", "laptop:9102"]
+      - targets: ["home-server:8123", "laptop:8123"]
 ```
 
 Queries to start with:
@@ -72,6 +81,10 @@ Queries to start with:
 # 95th percentile round-trip time, in seconds
 histogram_quantile(0.95, rate(trf_rtt_seconds_bucket[5m]))
 ```
+
+A Grafana dashboard is in `grafana/dashboard.json`: in Grafana, open Dashboards > New > Import and
+upload it. It shows one row per client. Download loss and jitter are measured by the client, so
+Prometheus must scrape the client too.
 
 ## Build
 
@@ -101,13 +114,11 @@ them if it is missing.
 
 ```
 ./gradlew test
-./gradlew run --args="--mode=server --server-id=home --port=5000 --metrics-port=9101"
+./gradlew run --args="--mode=server --server-id=home"
 ```
 
 GitHub Actions builds executables for Linux (x64, ARM64), macOS (Apple silicon) and Windows (x64) on
 every push. Download them from the run's Artifacts, or from the Releases page for released versions.
-On Linux and macOS, make the downloaded file executable with `chmod +x <file>`. If macOS blocks it,
-run `xattr -d com.apple.quarantine <file>`.
 
 To release, push a version tag:
 

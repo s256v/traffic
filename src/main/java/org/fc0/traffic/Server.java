@@ -2,13 +2,16 @@ package org.fc0.traffic;
 
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.DatagramChannel;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.LockSupport;
 
@@ -17,7 +20,9 @@ import java.util.concurrent.locks.LockSupport;
  * after client-timeout without packets from it.
  */
 final class Server implements AutoCloseable {
-    record Config(String serverId, int port, int metricsPort, long maxRate, Duration clientTimeout) {
+    /** A null address means all local addresses. */
+    record Config(String serverId, InetAddress address, int port, InetAddress metricsAddress, int metricsPort,
+            long maxRate, Duration clientTimeout) {
     }
 
     private final Config config;
@@ -35,14 +40,22 @@ final class Server implements AutoCloseable {
 
     void start() throws IOException {
         try {
-            channel = Udp.open(config.port());
-            http = metrics.serve(config.metricsPort());
+            channel = Udp.open(config.address(), config.port());
+            http = metrics.serve(config.metricsAddress(), config.metricsPort());
         } catch (IOException e) {
             close();
             throw e;
         }
-        Log.info("server %s listening on UDP port %d, metrics on http://localhost:%d/metrics, max-rate %s",
-                config.serverId(), port(), metricsPort(), Rates.format(config.maxRate()));
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("mode", "server");
+        parameters.put("server-id", config.serverId());
+        parameters.put("address", Addresses.format(config.address()));
+        parameters.put("port", port());
+        parameters.put("metrics-address", Addresses.format(config.metricsAddress()));
+        parameters.put("metrics-port", metricsPort());
+        parameters.put("max-rate", Rates.format(config.maxRate()));
+        parameters.put("client-timeout", config.clientTimeout().toSeconds() + " seconds");
+        Log.parameters("traffic started", parameters);
         running = true;
         receiver = Thread.ofPlatform().name("receiver").start(this::receiveLoop);
         housekeeper = Thread.ofPlatform().name("housekeeper").daemon().start(this::housekeepingLoop);

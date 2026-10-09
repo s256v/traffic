@@ -10,6 +10,8 @@ import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.io.IOException;
 import java.net.BindException;
+import java.net.InetAddress;
+import java.net.SocketException;
 import java.util.concurrent.atomic.LongAdder;
 
 /** The Prometheus metrics of one client or server, with its own registry. */
@@ -46,12 +48,17 @@ final class Metrics {
                 RTT_BUCKETS, labelNames);
     }
 
-    /** Starts the HTTP endpoint that serves /metrics. Port 0 picks a free port. */
-    HTTPServer serve(int port) throws IOException {
+    /**
+     * Starts the HTTP endpoint that serves /metrics on {@code port} of {@code address}, or of all local addresses if
+     * {@code address} is null. Port 0 picks a free port.
+     */
+    HTTPServer serve(InetAddress address, int port) throws IOException {
         try {
-            return HTTPServer.builder().port(port).registry(registry).buildAndStart();
-        } catch (BindException e) {
-            throw new BindException("metrics port " + port + " is not available: " + e.getMessage());
+            return HTTPServer.builder().inetAddress(address).port(port).registry(registry).buildAndStart();
+        } catch (SocketException e) {
+            // A BindException, or "Unsupported address type" for an IPv6 address on a machine without IPv6.
+            throw new BindException(
+                    "metrics " + Addresses.describe(address, port) + " is not available: " + e.getMessage());
         }
     }
 

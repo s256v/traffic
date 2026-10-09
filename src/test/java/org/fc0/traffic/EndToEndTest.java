@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 /** Runs a server and clients on the loopback interface and checks their metrics. */
 class EndToEndTest {
     private static final HttpClient HTTP = HttpClient.newHttpClient();
+    private static final InetAddress LOOPBACK = InetAddress.getLoopbackAddress();
     private static final String C1 = "{client_id=\"c1\"}";
     private static final String S1 = "{client_id=\"c1\",server_id=\"srv\"}";
 
@@ -92,13 +94,15 @@ class EndToEndTest {
     }
 
     private static Server server(String maxRate, int clientTimeoutSeconds) throws IOException {
-        Server server = new Server(new Server.Config("srv", 0, 0, Rates.parse(maxRate), Duration.ofSeconds(clientTimeoutSeconds)));
+        Server server = new Server(new Server.Config("srv", LOOPBACK, 0, LOOPBACK, 0, Rates.parse(maxRate),
+                Duration.ofSeconds(clientTimeoutSeconds)));
         server.start();
         return server;
     }
 
     private static Client client(String id, Server server, String rate, int packetSize) throws IOException {
-        Client client = new Client(new Client.Config(id, "127.0.0.1", server.port(), 0, Rates.parse(rate), packetSize));
+        Client client = new Client(new Client.Config(id, LOOPBACK.getHostAddress(), server.port(), null, 0,
+                Rates.parse(rate), packetSize));
         client.start();
         return client;
     }
@@ -124,7 +128,8 @@ class EndToEndTest {
     }
 
     private static Map<String, Double> scrape(int port) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/metrics")).build();
+        HttpRequest request = HttpRequest.newBuilder(
+                URI.create("http://" + LOOPBACK.getHostAddress() + ":" + port + "/metrics")).build();
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         Map<String, Double> values = new HashMap<>();
