@@ -55,7 +55,7 @@ final class Server implements AutoCloseable {
         parameters.put("metrics-port", metricsPort());
         parameters.put("max-rate", Rates.format(config.maxRate()));
         parameters.put("client-timeout", config.clientTimeout().toSeconds() + " seconds");
-        Log.parameters("traffic started", parameters);
+        Log.parameters("traffic " + Main.VERSION + " started", parameters);
         running = true;
         receiver = Thread.ofPlatform().name("receiver").start(this::receiveLoop);
         housekeeper = Thread.ofPlatform().name("housekeeper").daemon().start(this::housekeepingLoop);

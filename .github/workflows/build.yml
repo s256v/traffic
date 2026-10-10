@@ -54,7 +54,8 @@ jobs:
             build/native/nativeCompile/traffic.exe
           if-no-files-found: error
 
-  # On a version tag like v0.1.0, publishes the executables as a GitHub release.
+  # On a version tag like v0.1.0, publishes the executables and the Grafana dashboard
+  # as a GitHub release.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -62,6 +63,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      # For grafana/dashboard.json. Checkout comes first, as it cleans the workspace.
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           pattern: traffic-*
@@ -77,6 +80,8 @@ jobs:
               mv "$dir/traffic" "release/$name"
             fi
           done
+      - name: Add the Grafana dashboard
+        run: cp grafana/dashboard.json release/grafana-dashboard.json
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -136,5 +136,5 @@ git push origin v0.1.0
 ```
 
 GitHub Actions then builds version 0.1.0 and publishes the executables as a release, named like
-`traffic-linux-x64`. Other builds are version `dev`; add `-PappVersion=0.1.0` to the Gradle command
-to set one.
+`traffic-linux-x64`, with the Grafana dashboard as `grafana-dashboard.json`. Other builds are
+version `dev`; add `-PappVersion=0.1.0` to the Gradle command to set one.

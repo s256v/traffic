@@ -76,7 +76,7 @@ final class Client implements AutoCloseable {
         parameters.put("metrics-port", metricsPort());
         parameters.put("rate-limit", Rates.format(config.rate()));
         parameters.put("packet-size", config.packetSize() + " bytes");
-        Log.parameters("traffic started", parameters);
+        Log.parameters("traffic " + Main.VERSION + " started", parameters);
         running = true;
         receiver = Thread.ofPlatform().name("receiver").start(this::receiveLoop);
         sender = Thread.ofPlatform().name("sender").daemon().start(this::sendLoop);
