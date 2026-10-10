@@ -1,12 +1,14 @@
 package org.fc0.traffic;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
 
 /** Timestamped lines on the terminal. */
 final class Log {
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT);
+
     private Log() {
     }
 
@@ -26,6 +28,6 @@ final class Log {
     }
 
     private static String line(String format, Object... args) {
-        return Instant.now().truncatedTo(ChronoUnit.SECONDS) + " " + String.format(Locale.ROOT, format, args);
+        return TIME.format(LocalDateTime.now()) + " " + String.format(Locale.ROOT, format, args);
     }
 }
