@@ -57,6 +57,8 @@ class EndToEndTest {
                 }
                 assertEquals(0, c.get("trf_port_changes_total" + C1));
                 assertFalse(s.containsKey("trf_port_changes_total" + S1), "only the client moves to new ports");
+                assertEquals(0, s.get("trf_client_ip_changes_total" + S1));
+                assertFalse(c.containsKey("trf_client_ip_changes_total" + C1), "only the server counts IP changes");
             }
         }
     }
@@ -94,6 +96,8 @@ class EndToEndTest {
                 await(client.metricsPort(), m -> m.getOrDefault("trf_rx_packets_total" + C1, 0.0) > 100);
                 Map<String, Double> s = await(server.metricsPort(), m -> m.getOrDefault("trf_rx_packets_total" + S1, 0.0) > 100);
                 assertEquals(0, s.get("trf_lost_packets_total" + S1));
+                // The restarted client sends from a new port of the same IP: no IP change.
+                assertEquals(0, s.get("trf_client_ip_changes_total" + S1));
             }
             Map<String, Double> s = await(server.metricsPort(), m -> !m.containsKey("trf_rx_packets_total" + S1));
             assertFalse(s.keySet().stream().anyMatch(key -> key.contains("client_id=\"c1\"")), s.toString());

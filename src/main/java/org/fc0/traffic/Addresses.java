@@ -2,6 +2,8 @@ package org.fc0.traffic;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 
 /** Parses and formats the IP addresses that sockets listen on. A null address means all local addresses. */
 final class Addresses {
@@ -28,6 +30,12 @@ final class Addresses {
     /** Describes where a socket listens, such as "port 6123 (all interfaces)" or "address 192.0.2.1:6123". */
     static String describe(InetAddress address, int port) {
         return address == null ? "port " + port + " (all interfaces)" : "address " + hostAndPort(address, port);
+    }
+
+    /** Whether two socket addresses have the same IP address, whatever their ports. */
+    static boolean sameIp(SocketAddress a, SocketAddress b) {
+        return a instanceof InetSocketAddress x && b instanceof InetSocketAddress y
+                && x.getAddress().equals(y.getAddress());
     }
 
     private static String hostAndPort(InetAddress address, int port) {

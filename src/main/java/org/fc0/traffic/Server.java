@@ -36,6 +36,7 @@ final class Server implements AutoCloseable {
 
     Server(Config config) {
         this.config = config;
+        metrics.countIpChanges();
     }
 
     void start() throws IOException {
@@ -182,6 +183,9 @@ final class Server implements AutoCloseable {
             } else {
                 if (!from.equals(address)) {
                     Log.info("client %s now sends from %s", clientId, from);
+                    if (!Addresses.sameIp(from, address)) {
+                        peer.ipChanged();
+                    }
                 }
                 if (p.rate != requestedRate || size != packetSize) {
                     Log.info("client %s changed to %s", clientId, describe(p.rate, size));

@@ -56,6 +56,7 @@ Rates are in bits per second: `500k`, `2m`, `2.5m` (k = 1,000, m = 1,000,000, g 
 | `trf_lost_packets_total`                                     | counter   | packets the other side sent that never arrived               |
 | `trf_outage_seconds_total`                                   | counter   | time when nothing at all arrived for over 1 s                |
 | `trf_port_changes_total`                                     | counter   | client only: times it moved to a new UDP port                |
+| `trf_client_ip_changes_total`                                | counter   | server only: times the client's IP changed                   |
 | `trf_rx_rate_bits_per_second`, `trf_tx_rate_bits_per_second` | gauge     | receive and send rate over the last second                   |
 | `trf_jitter_seconds`                                         | histogram | how much the packet delay varies from one packet to the next |
 | `trf_rtt_seconds`                                            | histogram | round-trip time                                              |
@@ -90,9 +91,9 @@ histogram_quantile(0.95, rate(trf_rtt_seconds_bucket[5m]))
 ```
 
 A Grafana dashboard is in `grafana/dashboard.json`: in Grafana, open Dashboards > New > Import and
-upload it. It shows one row per client, with a bar per direction that turns red during an outage
-and marks for the client's port changes. Download loss, jitter and outages are measured by the
-client, so Prometheus must scrape the client too.
+upload it. It shows one row per client, with a bar per direction that turns red during an outage,
+and marks for the client's port changes (yellow) and IP changes (blue). Download loss, jitter and
+outages are measured by the client, so Prometheus must scrape the client too.
 
 ## Build
 

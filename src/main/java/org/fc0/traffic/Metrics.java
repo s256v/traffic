@@ -33,6 +33,8 @@ final class Metrics {
     private final Gauge txRate;
     private final Histogram jitter;
     private final Histogram rtt;
+    // Server only, set by countIpChanges.
+    private Counter ipChanges;
 
     Metrics(String... labelNames) {
         this.labelNames = labelNames;
@@ -80,6 +82,15 @@ final class Metrics {
                 .labelValues(labelValues);
     }
 
+    /**
+     * Creates the server's counter of client IP changes. Call before the first {@link #peer}; each peer then gets its
+     * data point at zero, and {@link #remove} removes it.
+     */
+    void countIpChanges() {
+        ipChanges = counter("trf_client_ip_changes_total",
+                "Times the client's packets started coming from a different IP address", labelNames);
+    }
+
     /** Removes all metrics for one set of label values. */
     void remove(String... labelValues) {
         rxBytes.remove(labelValues);
@@ -92,6 +103,9 @@ final class Metrics {
         txRate.remove(labelValues);
         jitter.remove(labelValues);
         rtt.remove(labelValues);
+        if (ipChanges != null) {
+            ipChanges.remove(labelValues);
+        }
     }
 
     private Counter counter(String name, String help, String[] labelNames) {
@@ -119,6 +133,7 @@ final class Metrics {
         private final GaugeDataPoint txRatePoint;
         private final DistributionDataPoint jitterPoint;
         private final DistributionDataPoint rttPoint;
+        private final CounterDataPoint ipChangesPoint;
         private final LongAdder rxTotal = new LongAdder();
         private final LongAdder txTotal = new LongAdder();
         // Only touched by updateRates, which runs on one thread.
@@ -137,6 +152,7 @@ final class Metrics {
             txRatePoint = txRate.labelValues(labelValues);
             jitterPoint = jitter.labelValues(labelValues);
             rttPoint = rtt.labelValues(labelValues);
+            ipChangesPoint = ipChanges == null ? null : ipChanges.labelValues(labelValues);
             rxRatePoint.set(0);
             txRatePoint.set(0);
         }
@@ -169,6 +185,11 @@ final class Metrics {
 
         void rtt(double seconds) {
             rttPoint.observe(seconds);
+        }
+
+        /** Server only: counts a change of the client's IP address. */
+        void ipChanged() {
+            ipChangesPoint.inc();
         }
 
         /** Sets the rate gauges from the bytes counted since the previous call. Call about once a second. */

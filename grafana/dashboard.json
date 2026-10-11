@@ -521,7 +521,7 @@
       "type": "state-timeline",
       "id": 13,
       "title": "Outages",
-      "description": "Red while nothing at all arrives for over 1 s: upload is measured by the server, download by the client. Yellow marks show when the client moved to a new port because nothing came from the server. Each point covers the last few scrapes, so a short outage shows wider than it was.",
+      "description": "Red while nothing at all arrives for over 1 s: upload is measured by the server, download by the client. Yellow marks show when the client moved to a new port because nothing came from the server. Blue marks show when the server saw the client's packets start coming from a different IP address. Each point covers the last few scrapes, so a short outage shows wider than it was.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -563,6 +563,17 @@
           },
           "expr": "sum(increase(trf_port_changes_total{server_id=\"\", client_id=~\"$client\"}[$__rate_interval])) > bool 0",
           "legendFormat": "port change",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(trf_client_ip_changes_total{server_id!=\"\", client_id=~\"$client\"}[$__rate_interval])) > bool 0",
+          "legendFormat": "IP change",
           "instant": false,
           "range": true
         }
@@ -616,6 +627,34 @@
                       "1": {
                         "text": "moved to a new port",
                         "color": "#fab219",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "D"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "same IP",
+                        "color": "rgba(128, 128, 128, 0.3)",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "IP changed",
+                        "color": "#3987e5",
                         "index": 1
                       }
                     }
