@@ -25,6 +25,10 @@ traffic --mode=server --server-id=home
 traffic --mode=client --client-id=laptop --host=example.com --rate-limit=2m
 ```
 
+With Java 17 or newer, you can run `traffic.jar` from the Releases page instead, with the same
+options: `java -jar traffic.jar --mode=server --server-id=home`. In Termux on Android, run
+`termux-wake-lock` first, so Android doesn't pause it when the screen turns off.
+
 Stop with Ctrl+C. The server's firewall must let in UDP on `--port` (6123 by default). To run the
 client and the server on one machine, give one of them another `--metrics-port`, like `-M 8124`.
 The metrics endpoint has no password, so on a public server give it a private or VPN address with
@@ -126,8 +130,11 @@ them if it is missing.
 ./gradlew run --args="--mode=server --server-id=home"
 ```
 
-GitHub Actions builds executables for Linux (x64, ARM64), macOS (Apple silicon) and Windows (x64) on
-every push. Download them from the run's Artifacts, or from the Releases page for released versions.
+`./gradlew fatJar` builds `build/libs/traffic.jar`, which doesn't need GraalVM either.
+
+GitHub Actions builds executables for Linux (x64, ARM64), macOS (Apple silicon) and Windows (x64),
+and traffic.jar, on every push. Download them from the run's Artifacts, or from the Releases page
+for released versions.
 
 To release, push a version tag:
 
@@ -137,5 +144,5 @@ git push origin v0.1.0
 ```
 
 GitHub Actions then builds version 0.1.0 and publishes the executables as a release, named like
-`traffic-linux-x64`, with the Grafana dashboard as `grafana-dashboard.json`. Other builds are
-version `dev`; add `-PappVersion=0.1.0` to the Gradle command to set one.
+`traffic-linux-x64`, plus `traffic.jar` and the Grafana dashboard as `grafana-dashboard.json`.
+Other builds are version `dev`; add `-PappVersion=0.1.0` to the Gradle command to set one.

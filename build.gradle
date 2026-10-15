@@ -34,6 +34,9 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.named('compileJava') {
+    // Java 17 classes, so traffic.jar also runs on Java 17, like OpenJDK in Termux on Android.
+    // The app's code can only use Java 17 APIs; the tests can use anything up to Java 25.
+    options.release = 17
     // Options of picocli-codegen. The app uses no dynamic proxies, so skip that config file.
     options.compilerArgs.addAll(['-Aproject=' + project.name, '-Adisable.proxy.config=true'])
 }
@@ -63,6 +66,21 @@ sourceSets.main.java.srcDir(generateVersion)
 
 application {
     mainClass = 'org.fc0.traffic.Main'
+}
+
+// traffic.jar: the app and its libraries in one file, for "java -jar traffic.jar" on Java 17 or newer.
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Builds build/libs/traffic.jar, the app with its libraries, which runs on Java 17 or newer.'
+    archiveFileName = 'traffic.jar'
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from sourceSets.main.output
+    from { configurations.runtimeClasspath.collect { zipTree(it) } }
+    // picocli's module descriptor would make the whole JAR look like the picocli module.
+    exclude 'module-info.class', 'META-INF/versions/*/module-info.class'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.named('test') {

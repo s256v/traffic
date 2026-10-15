@@ -37,14 +37,14 @@ jobs:
           java-version: '25'
           distribution: 'graalvm-community'
           cache: 'gradle'
-      - name: Test and build the executable
+      - name: Test and build the executable and traffic.jar
         shell: bash
         run: |
           # A version tag like v0.2.0 sets the version to 0.2.0. Other builds are "dev".
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            ./gradlew test nativeCompile -PappVersion="${GITHUB_REF_NAME#v}"
+            ./gradlew test nativeCompile fatJar -PappVersion="${GITHUB_REF_NAME#v}"
           else
-            ./gradlew test nativeCompile
+            ./gradlew test nativeCompile fatJar
           fi
       - uses: actions/upload-artifact@v7
         with:
@@ -52,6 +52,13 @@ jobs:
           path: |
             build/native/nativeCompile/traffic
             build/native/nativeCompile/traffic.exe
+          if-no-files-found: error
+      # traffic.jar is the same on every OS, so only one build uploads it.
+      - uses: actions/upload-artifact@v7
+        if: matrix.name == 'linux-x64'
+        with:
+          name: traffic-jar
+          path: build/libs/traffic.jar
           if-no-files-found: error
 
   # On a version tag like v0.1.0, publishes the executables and the Grafana dashboard
@@ -74,7 +81,9 @@ jobs:
           mkdir release
           for dir in artifacts/*; do
             name=$(basename "$dir")
-            if [ -f "$dir/traffic.exe" ]; then
+            if [ -f "$dir/traffic.jar" ]; then
+              mv "$dir/traffic.jar" release/traffic.jar
+            elif [ -f "$dir/traffic.exe" ]; then
               mv "$dir/traffic.exe" "release/$name.exe"
             else
               mv "$dir/traffic" "release/$name"

@@ -58,8 +58,11 @@ final class Server implements AutoCloseable {
         parameters.put("client-timeout", config.clientTimeout().toSeconds() + " seconds");
         Log.parameters("traffic " + Main.VERSION + " started", parameters);
         running = true;
-        receiver = Thread.ofPlatform().name("receiver").start(this::receiveLoop);
-        housekeeper = Thread.ofPlatform().name("housekeeper").daemon().start(this::housekeepingLoop);
+        receiver = new Thread(this::receiveLoop, "receiver");
+        housekeeper = new Thread(this::housekeepingLoop, "housekeeper");
+        housekeeper.setDaemon(true);
+        receiver.start();
+        housekeeper.start();
     }
 
     int port() throws IOException {
@@ -167,7 +170,8 @@ final class Server implements AutoCloseable {
             this.peer = metrics.peer(clientId, config.serverId());
             this.stream = new StreamReceiver(peer, now);
             this.lastReceived = now;
-            this.sender = Thread.ofPlatform().name("sender-" + clientId).daemon().unstarted(this::sendLoop);
+            this.sender = new Thread(this::sendLoop, "sender-" + clientId);
+            sender.setDaemon(true);
         }
 
         Session touch(long now) {

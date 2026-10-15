@@ -78,9 +78,14 @@ final class Client implements AutoCloseable {
         parameters.put("packet-size", config.packetSize() + " bytes");
         Log.parameters("traffic " + Main.VERSION + " started", parameters);
         running = true;
-        receiver = Thread.ofPlatform().name("receiver").start(this::receiveLoop);
-        sender = Thread.ofPlatform().name("sender").daemon().start(this::sendLoop);
-        housekeeper = Thread.ofPlatform().name("housekeeper").daemon().start(this::housekeepingLoop);
+        receiver = new Thread(this::receiveLoop, "receiver");
+        sender = new Thread(this::sendLoop, "sender");
+        sender.setDaemon(true);
+        housekeeper = new Thread(this::housekeepingLoop, "housekeeper");
+        housekeeper.setDaemon(true);
+        receiver.start();
+        sender.start();
+        housekeeper.start();
     }
 
     int metricsPort() {
